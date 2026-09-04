@@ -23,6 +23,8 @@ between messages loses at most the message it was handling.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from dmai.ai.dm_agent.agent import DungeonMaster
@@ -32,6 +34,28 @@ from dmai.engine.models.base import Visibility
 from dmai.engine.models.campaign import Campaign, CampaignSettings
 from dmai.engine.session import GameSession
 from dmai.persistence import CampaignStore, SaveError
+
+
+#: Chat-room bindings live beside the campaigns they point at, so moving a
+#: store moves its tables with it.
+CHANNELS_FILE = "channels.json"
+
+
+def _read_channels(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}  # a corrupt binding file loses routing, never a campaign
+    return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+
+
+def _write_channels(path: Path, channels: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(channels, indent=2), encoding="utf-8")
+    temporary.replace(path)
 
 
 class OpenClawError(RuntimeError):
@@ -56,6 +80,45 @@ class OpenClawAdapter:
         self.provider = provider or OfflineProvider()
         self._sessions: dict[str, GameSession] = {}
         self._agents: dict[str, DungeonMaster] = {}
+        self._channels: dict[str, str] | None = None
+
+    # --- channels ----------------------------------------------------------
+    #
+    # A chat room is a table.  Routing by player identity alone breaks the
+    # moment someone plays in two games -- and in a group chat it is the
+    # *room*, not the person, that says which campaign a message belongs to.
+
+    @property
+    def channels(self) -> dict[str, str]:
+        """channel id -> campaign id, loaded from disk on first use."""
+        if self._channels is None:
+            self._channels = _read_channels(self.store.root / CHANNELS_FILE)
+        return self._channels
+
+    def bind_channel(self, channel_id: str, campaign_id: str) -> dict:
+        """Point a chat room at a campaign.  Survives a restart."""
+        self._session(campaign_id)  # fail now if the campaign is not real
+        self.channels[channel_id] = campaign_id
+        _write_channels(self.store.root / CHANNELS_FILE, self.channels)
+        return {"channel_id": channel_id, "campaign_id": campaign_id, "bound": True}
+
+    def unbind_channel(self, channel_id: str) -> dict:
+        """Forget a room's table.  The campaign itself is untouched."""
+        removed = self.channels.pop(channel_id, None)
+        _write_channels(self.store.root / CHANNELS_FILE, self.channels)
+        return {"channel_id": channel_id, "campaign_id": removed, "bound": False}
+
+    def channel_binding(self, channel_id: str) -> dict:
+        return {
+            "channel_id": channel_id,
+            "campaign_id": self.channels.get(channel_id),
+        }
+
+    def list_channels(self) -> list[dict]:
+        return [
+            {"channel_id": channel, "campaign_id": campaign}
+            for channel, campaign in sorted(self.channels.items())
+        ]
 
     # --- campaigns ---------------------------------------------------------
 
@@ -66,6 +129,7 @@ class OpenClawAdapter:
         premise: str = "",
         setting: str = "",
         settings: dict[str, Any] | None = None,
+        channel_id: str | None = None,
     ) -> dict:
         campaign = Campaign(
             name=name,
@@ -76,6 +140,10 @@ class OpenClawAdapter:
         session = GameSession.create(campaign)
         self._adopt(session)
         self.store.save(session)
+        if channel_id is not None:
+            # One call to start a table in a room, so a chat command cannot
+            # half-succeed into a campaign nobody can reach.
+            self.bind_channel(channel_id, campaign.id)
         return self._campaign_summary(session)
 
     def load_campaign(self, campaign_id: str) -> dict:
@@ -179,6 +247,10 @@ class OpenClawAdapter:
             "campaign_id": campaign_id,
             "player_id": player_id,
             "character_id": character_id,
+            # A seat with no character cannot roll anything, so every check the
+            # DM asks for is dropped and the turn reads as "nothing happened".
+            # Say so plainly instead: the caller should offer to roll one up.
+            "needs_character": character_id is None,
             "narration": result.narration,
             "intent": result.interpretation.intent.value if result.interpretation else None,
             # A short player-facing explanation, never the model's reasoning
@@ -189,17 +261,51 @@ class OpenClawAdapter:
             "cost_usd": result.cost_usd,
         }
 
-    def handle_message(self, external_id: str, text: str, *, campaign_id: str | None = None) -> dict:
+    def handle_message(
+        self,
+        external_id: str,
+        text: str,
+        *,
+        campaign_id: str | None = None,
+        channel_id: str | None = None,
+        display_name: str | None = None,
+    ) -> dict:
         """Route one chat message to the right table and answer it.
 
         The full section-20 flow: identify the player, find their campaign, load
-        its state, resolve the action, persist, reply.  With no campaign named,
-        the player's seat is looked up across the open tables and the saved
-        ones, and an ambiguous identity is an error rather than a guess -- the
-        one thing worse than not answering is answering in the wrong world.
+        its state, resolve the action, persist, reply.
+
+        A campaign is chosen in this order, most specific first:
+
+        1. ``campaign_id``, when the caller already knows it;
+        2. the campaign bound to ``channel_id`` -- the room is the table, which
+           is what makes a group chat work;
+        3. the one campaign this player is seated at.
+
+        An ambiguous identity is an error rather than a guess: the one thing
+        worse than not answering is answering in the wrong world.
+
+        In a bound room, a player nobody has seated yet is seated on their
+        first message when ``display_name`` is given -- joining a game should
+        not need a separate command. That never happens in an unbound room, so
+        a stray message cannot conjure a seat at someone else's table.
         """
+        if campaign_id is None and channel_id is not None:
+            campaign_id = self.channels.get(channel_id)
+            if campaign_id is not None and display_name:
+                self._ensure_seated(campaign_id, external_id, display_name)
         campaign_id = campaign_id or self.campaign_for(external_id)
         return self.submit_player_action(campaign_id, text, external_id=external_id)
+
+    def _ensure_seated(self, campaign_id: str, external_id: str, display_name: str) -> None:
+        session = self._session(campaign_id)
+        if session.player_by_external_id(external_id) is None:
+            self.join(
+                campaign_id,
+                display_name,
+                external_id=external_id,
+                is_host=not session.state.players,
+            )
 
     def campaign_for(self, external_id: str) -> str:
         """Which table this chat identity is seated at."""
@@ -419,6 +525,10 @@ CALLABLE_OPERATIONS = (
     *OPERATIONS,
     "handle_message",
     "campaign_for",
+    "bind_channel",
+    "unbind_channel",
+    "channel_binding",
+    "list_channels",
     "list_campaigns",
     "close_campaign",
     "join",
@@ -430,6 +540,7 @@ CALLABLE_OPERATIONS = (
 
 __all__ = [
     "CALLABLE_OPERATIONS",
+    "CHANNELS_FILE",
     "OPERATIONS",
     "OpenClawAdapter",
     "OpenClawError",

@@ -331,3 +331,162 @@ def test_every_reply_is_one_line_of_json(bot, table):
     lines = out.getvalue().splitlines()
     assert len(lines) == 1
     assert json.loads(lines[0])["ok"] is True
+
+
+# --- chat rooms as tables --------------------------------------------------
+#
+# Routing by player identity alone breaks in a group chat: everyone in the room
+# shares one campaign, and one person may play in several.
+
+
+def test_a_room_can_be_bound_to_a_campaign(bot, table):
+    campaign_id = table["campaign"]["campaign_id"]
+
+    bot.bind_channel("telegram:-100123", campaign_id)
+
+    assert bot.channel_binding("telegram:-100123")["campaign_id"] == campaign_id
+    assert bot.list_channels() == [
+        {"channel_id": "telegram:-100123", "campaign_id": campaign_id}
+    ]
+
+
+def test_a_campaign_can_bind_its_room_as_it_is_created(bot):
+    created = bot.create_campaign("Group Table", channel_id="telegram:-100999")
+
+    assert bot.channels["telegram:-100999"] == created["campaign_id"]
+
+
+def test_binding_a_room_to_a_campaign_that_is_not_there_fails(bot):
+    with pytest.raises(OpenClawError, match="no campaign saved"):
+        bot.bind_channel("telegram:-100123", "camp-nothing")
+
+
+def test_bindings_survive_a_restart(bot, table, tmp_path):
+    bot.bind_channel("telegram:-100123", table["campaign"]["campaign_id"])
+
+    fresh = OpenClawAdapter(CampaignStore(tmp_path / "campaigns"))
+
+    assert fresh.channels["telegram:-100123"] == table["campaign"]["campaign_id"]
+
+
+def test_the_room_decides_the_campaign_not_the_player(bot, table):
+    """A player in two games is routed by the room they spoke in."""
+    alpha = table["campaign"]["campaign_id"]
+    beta = bot.create_campaign("Party Beta", settings={"rng_seed": 6})["campaign_id"]
+    bot.join(beta, "James", external_id="discord:111")
+    bot.bind_channel("room:alpha", alpha)
+    bot.bind_channel("room:beta", beta)
+
+    # Identity alone is now ambiguous...
+    with pytest.raises(OpenClawError, match="several campaigns"):
+        bot.campaign_for("discord:111")
+
+    # ...but the room is not.
+    in_alpha = bot.handle_message("discord:111", "I look around", channel_id="room:alpha")
+    in_beta = bot.handle_message("discord:111", "I look around", channel_id="room:beta")
+
+    assert in_alpha["campaign_id"] == alpha
+    assert in_beta["campaign_id"] == beta
+
+
+def test_a_new_player_is_seated_on_their_first_message_in_a_bound_room(bot, table):
+    campaign_id = table["campaign"]["campaign_id"]
+    bot.bind_channel("telegram:-100123", campaign_id)
+
+    reply = bot.handle_message(
+        "telegram:77", "I push open the door", channel_id="telegram:-100123",
+        display_name="Dana",
+    )
+
+    assert reply["campaign_id"] == campaign_id
+    assert bot._session(campaign_id).player_by_external_id("telegram:77").name == "Dana"
+
+
+def test_an_unbound_room_never_seats_anyone(bot, table):
+    """A stray message must not conjure a seat at someone else's table."""
+    with pytest.raises(OpenClawError, match="not seated"):
+        bot.handle_message(
+            "telegram:99", "hello?", channel_id="telegram:-100404", display_name="Stranger"
+        )
+
+    assert bot._session(table["campaign"]["campaign_id"]).player_by_external_id(
+        "telegram:99"
+    ) is None
+
+
+def test_an_explicit_campaign_still_wins_over_the_room(bot, table):
+    alpha = table["campaign"]["campaign_id"]
+    beta = bot.create_campaign("Party Beta", settings={"rng_seed": 6})["campaign_id"]
+    bot.join(beta, "James", external_id="discord:111")
+    bot.bind_channel("room:alpha", alpha)
+
+    reply = bot.handle_message(
+        "discord:111", "I look around", campaign_id=beta, channel_id="room:alpha"
+    )
+
+    assert reply["campaign_id"] == beta
+
+
+def test_unbinding_a_room_leaves_the_campaign_alone(bot, table):
+    campaign_id = table["campaign"]["campaign_id"]
+    bot.bind_channel("room:x", campaign_id)
+
+    bot.unbind_channel("room:x")
+
+    assert bot.channel_binding("room:x")["campaign_id"] is None
+    assert bot.get_game_state(campaign_id)["briefing"]["who"]
+
+
+def test_a_corrupt_binding_file_loses_routing_not_campaigns(bot, table, tmp_path):
+    from dmai.integrations.openclaw.adapter import CHANNELS_FILE
+
+    bot.bind_channel("room:x", table["campaign"]["campaign_id"])
+    (tmp_path / "campaigns" / CHANNELS_FILE).write_text("{ broken", encoding="utf-8")
+
+    fresh = OpenClawAdapter(CampaignStore(tmp_path / "campaigns"))
+
+    assert fresh.channels == {}
+    assert fresh.get_game_state(table["campaign"]["campaign_id"])["briefing"]["who"]
+
+
+def test_a_group_chat_plays_one_shared_campaign_over_the_pipe(bot):
+    """The Telegram shape end to end: one room, two players, one world."""
+    created = bot.create_campaign(
+        "Cinder Road", premise="A caravan vanished.", settings={"rng_seed": 4},
+        channel_id="telegram:-100777",
+    )
+    room = {"channel_id": "telegram:-100777"}
+
+    first, second, state = _serve(
+        bot,
+        {"op": "message", "external_id": "telegram:1", "display_name": "James",
+         "text": "I search the common room", **room},
+        {"op": "message", "external_id": "telegram:2", "display_name": "Dana",
+         "text": "I watch the door", **room},
+        {"op": "get_game_state", "campaign_id": created["campaign_id"]},
+    )
+
+    assert first["ok"] and second["ok"]
+    assert first["result"]["campaign_id"] == second["result"]["campaign_id"]
+    seated = {p.name for p in bot._session(created["campaign_id"]).state.players.values()}
+    assert seated == {"James", "Dana"}
+    assert state["result"]["events"] > 0
+
+
+def test_a_seat_with_no_character_says_so_rather_than_rolling_nothing(bot):
+    """Without a character there is nobody to roll for, and the turn would
+    otherwise read as 'nothing happened' for no visible reason."""
+    created = bot.create_campaign("Fresh Table", channel_id="room:new")
+
+    reply = bot.handle_message(
+        "telegram:5", "I search the room", channel_id="room:new", display_name="James"
+    )
+
+    assert reply["needs_character"] is True
+    assert reply["rolls"] == []
+
+    bot.create_character(created["campaign_id"], "Vale", external_id="telegram:5")
+    answered = bot.handle_message("telegram:5", "I search the room", channel_id="room:new")
+
+    assert answered["needs_character"] is False
+    assert answered["rolls"]
