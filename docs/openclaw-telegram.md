@@ -43,27 +43,31 @@ Set-Content -Path "$HOME\.openclaw\credentials\telegram-dungeon-master-token.txt
 Remove-Variable t
 ```
 
-## 3. Install the skill
+## 3. Put `dmai` on PATH, then install the skill
 
-The skill is version-controlled in this repo. Copy it into the DM agent's
-workspace:
+The skill calls `dmai`, so it has to resolve for the process the gateway runs
+under. A shim in a directory already on PATH avoids editing PATH itself (and
+avoids `setx PATH`, which truncates at 1024 characters and eats the rest):
 
 ```powershell
-$dest = "$HOME\.openclaw\workspace-dm\skills\dungeon-master"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item "D:\D&D AI DEV\integrations\openclaw-skill\dungeon-master\SKILL.md" $dest
+@'
+@echo off
+"D:\D&D AI DEV\.venv\Scripts\dmai.exe" %*
+'@ | Set-Content "$HOME\.local\bin\dmai.cmd"
+dmai bot --describe    # should print the protocol JSON
 ```
 
-A separate workspace keeps the DM's instructions away from your main agent, and
-your main agent's skills away from the game.
+Then install the skill with OpenClaw's own command, which is repeatable and
+knows where each agent's workspace is:
 
-`dmai` must be on the PATH the OpenClaw gateway runs with — check with
-`dmai bot --describe`. **On this machine it is not**, so the installed copy of
-the skill was rewritten to call
-`"D:\D&D AI DEV\.venv\Scripts\dmai.exe"` directly. The repo version keeps
-the plain `dmai`; if you ever put it on PATH, re-copy the repo version.
+```bash
+openclaw skills install "D:\D&D AI DEV\integrations\openclaw-skill\dungeon-master" --agent dungeon-master --force
+```
 
-Verify the skill loaded for the right agent, and only that agent:
+`--agent dungeon-master` is what keeps the DM's instructions out of your main
+agent, and your main agent's skills out of the game.
+
+Verify it loaded for the right agent, and only that agent:
 
 ```bash
 openclaw skills list --agent dungeon-master   # 🎲 dungeon-master, ✓ ready
