@@ -1,0 +1,11 @@
+{
+  "padded": {"name":"Padded Armor","type":"light","base_ac":11,"dex_cap":null,"stealth_disadvantage":true,"weight":8,"cost_gp":5},
+  "leather_armor": {"name":"Leather Armor","type":"light","base_ac":11,"dex_cap":null,"weight":10,"cost_gp":10},
+  "studded_leather": {"name":"Studded Leather","type":"light","base_ac":12,"dex_cap":null,"weight":13,"cost_gp":45},
+  "hide": {"name":"Hide Armor","type":"medium","base_ac":12,"dex_cap":2,"weight":12,"cost_gp":10},
+  "chain_shirt": {"name":"Chain Shirt","type":"medium","base_ac":13,"dex_cap":2,"weight":20,"cost_gp":50},
+  "scale_mail": {"name":"Scale Mail","type":"medium","base_ac":14,"dex_cap":2,"stealth_disadvantage":true,"weight":45,"cost_gp":50},
+  "chain_mail": {"name":"Chain Mail","type":"heavy","base_ac":16,"dex_cap":0,"stealth_disadvantage":true,"strength_requirement":13,"weight":55,"cost_gp":75},
+  "plate": {"name":"Plate Armor","type":"heavy","base_ac":18,"dex_cap":0,"stealth_disadvantage":true,"strength_requirement":15,"weight":65,"cost_gp":1500},
+  "shield": {"name":"Shield","type":"shield","ac_bonus":2,"weight":6,"cost_gp":10}
+}

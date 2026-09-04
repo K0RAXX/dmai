@@ -1,0 +1,8 @@
+{
+  "human": {"name":"Human","speed":30,"size":"medium","ability_bonuses":{"strength":1,"dexterity":1,"constitution":1,"intelligence":1,"wisdom":1,"charisma":1},"traits":["Versatile"]},
+  "elf": {"name":"Elf","speed":30,"size":"medium","ability_bonuses":{"dexterity":2},"traits":["Darkvision","Keen Senses","Fey Ancestry","Trance"],"skill_proficiencies":["perception"]},
+  "dwarf": {"name":"Dwarf","speed":25,"size":"medium","ability_bonuses":{"constitution":2},"traits":["Darkvision","Dwarven Resilience","Stonecunning"],"resistances":["poison"]},
+  "halfling": {"name":"Halfling","speed":25,"size":"small","ability_bonuses":{"dexterity":2},"traits":["Lucky","Brave","Halfling Nimbleness"]},
+  "half-orc": {"name":"Half-Orc","speed":30,"size":"medium","ability_bonuses":{"strength":2,"constitution":1},"traits":["Darkvision","Relentless Endurance","Savage Attacks"],"skill_proficiencies":["intimidation"]},
+  "tiefling": {"name":"Tiefling","speed":30,"size":"medium","ability_bonuses":{"charisma":2,"intelligence":1},"traits":["Darkvision","Hellish Resistance"],"resistances":["fire"]}
+}

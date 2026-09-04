@@ -1,0 +1,14 @@
+{
+  "club": {"name":"Club","damage":"1d4","damage_type":"bludgeoning","properties":["light"],"category":"simple","weight":2,"cost_gp":0.1},
+  "dagger": {"name":"Dagger","damage":"1d4","damage_type":"piercing","properties":["finesse","light","thrown"],"category":"simple","weight":1,"cost_gp":2},
+  "quarterstaff": {"name":"Quarterstaff","damage":"1d6","damage_type":"bludgeoning","properties":["versatile"],"versatile_damage":"1d8","category":"simple","weight":4,"cost_gp":0.2},
+  "mace": {"name":"Mace","damage":"1d6","damage_type":"bludgeoning","properties":[],"category":"simple","weight":4,"cost_gp":5},
+  "shortsword": {"name":"Shortsword","damage":"1d6","damage_type":"piercing","properties":["finesse","light"],"category":"martial","weight":2,"cost_gp":10},
+  "longsword": {"name":"Longsword","damage":"1d8","damage_type":"slashing","properties":["versatile"],"versatile_damage":"1d10","category":"martial","weight":3,"cost_gp":15},
+  "greataxe": {"name":"Greataxe","damage":"1d12","damage_type":"slashing","properties":["heavy","two-handed"],"category":"martial","weight":7,"cost_gp":30},
+  "greatsword": {"name":"Greatsword","damage":"2d6","damage_type":"slashing","properties":["heavy","two-handed"],"category":"martial","weight":6,"cost_gp":50},
+  "shortbow": {"name":"Shortbow","damage":"1d6","damage_type":"piercing","properties":["ammunition","two-handed","ranged"],"category":"simple","weight":2,"cost_gp":25,"range":[80,320]},
+  "longbow": {"name":"Longbow","damage":"1d8","damage_type":"piercing","properties":["ammunition","heavy","two-handed","ranged"],"category":"martial","weight":2,"cost_gp":50,"range":[150,600]},
+  "scimitar": {"name":"Scimitar","damage":"1d6","damage_type":"slashing","properties":["finesse","light"],"category":"martial","weight":3,"cost_gp":25},
+  "unarmed": {"name":"Unarmed Strike","damage":"1","damage_type":"bludgeoning","properties":[],"category":"simple","weight":0,"cost_gp":0}
+}
