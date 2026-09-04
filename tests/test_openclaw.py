@@ -7,9 +7,13 @@ bot exposes a real programmatic interface rather than driving a GUI, and it
 
 from __future__ import annotations
 
+import io
+import json
+
 import pytest
 
 from dmai.integrations.openclaw import OPERATIONS, OpenClawAdapter, OpenClawError
+from dmai.integrations.openclaw import bot as protocol
 from dmai.persistence import CampaignStore
 
 
@@ -201,3 +205,129 @@ def test_resuming_tells_the_table_where_they_are(bot, table):
     bot.store.save(session)
 
     assert bot.resume(campaign_id)["campaign_id"] == campaign_id
+
+
+# --- the line protocol -----------------------------------------------------
+#
+# What OpenClaw actually talks to: one JSON object per line in, one out. The
+# properties worth defending are that a bad message never stops the bot, and
+# that a chat transport cannot reach anything not on the allowlist.
+
+
+
+def _serve(bot: OpenClawAdapter, *requests: dict | str) -> list[dict]:
+    lines = [r if isinstance(r, str) else json.dumps(r) for r in requests]
+    out = io.StringIO()
+    protocol.serve(bot, stdin=io.StringIO("\n".join(lines) + "\n"), stdout=out)
+    return [json.loads(line) for line in out.getvalue().splitlines()]
+
+
+def test_the_protocol_describes_what_it_accepts(bot):
+    described = protocol.describe()
+
+    assert described["protocol"] == protocol.PROTOCOL_VERSION
+    assert "submit_player_action" in described["operations"]
+    assert protocol.MESSAGE_OP in described["shorthand"]
+
+
+def test_a_campaign_can_be_created_over_the_pipe(bot):
+    [reply] = _serve(bot, {"op": "create_campaign", "name": "Piped Table"})
+
+    assert reply["ok"] is True
+    assert reply["result"]["name"] == "Piped Table"
+
+
+def test_arguments_may_be_nested_or_flat(bot):
+    nested, flat = _serve(
+        bot,
+        {"op": "create_campaign", "args": {"name": "Nested"}},
+        {"op": "create_campaign", "name": "Flat"},
+    )
+
+    assert nested["result"]["name"] == "Nested"
+    assert flat["result"]["name"] == "Flat"
+
+
+def test_a_request_id_is_echoed_so_replies_can_be_matched(bot):
+    [reply] = _serve(bot, {"op": "list_campaigns", "id": "abc-123"})
+
+    assert reply["id"] == "abc-123"
+
+
+def test_message_is_shorthand_for_routing_by_chat_identity(bot, table):
+    [reply] = _serve(
+        bot, {"op": "message", "external_id": "discord:111", "text": "I look around"}
+    )
+
+    assert reply["ok"] is True
+    assert reply["op"] == "handle_message"
+    assert reply["result"]["narration"]
+
+
+def test_one_bad_message_does_not_stop_the_bot(bot):
+    replies = _serve(
+        bot,
+        "this is not json",
+        {"op": "nope"},
+        {"op": "create_campaign", "name": "Still Serving"},
+    )
+
+    assert [r["ok"] for r in replies] == [False, False, True]
+    assert replies[-1]["result"]["name"] == "Still Serving"
+
+
+def test_an_engine_error_comes_back_as_a_reply_not_a_crash(bot):
+    [reply] = _serve(bot, {"op": "get_character_sheet", "campaign_id": "camp-x", "character_id": "y"})
+
+    assert reply["ok"] is False
+    assert "no campaign saved" in reply["error"]
+
+
+def test_wrong_arguments_are_reported_against_the_operation(bot):
+    [reply] = _serve(bot, {"op": "roll_dice", "campaign_id": "camp-x"})
+
+    assert reply["ok"] is False
+    assert reply["error"].startswith("roll_dice:")
+
+
+def test_a_transport_cannot_reach_past_the_allowlist(bot, table):
+    """The caller is carrying text from strangers; dispatch is not getattr."""
+    for hostile in ("_session", "_agent", "store", "provider", "__class__"):
+        [reply] = _serve(bot, {"op": hostile})
+        assert reply["ok"] is False
+        assert "unknown operation" in reply["error"]
+
+
+def test_dispatch_refuses_an_operation_that_is_not_listed(bot):
+    with pytest.raises(OpenClawError, match="unknown operation"):
+        bot.dispatch("close_campaign_and_delete_everything", {})
+
+
+def test_blank_lines_are_ignored(bot):
+    replies = _serve(bot, "", "   ", {"op": "list_campaigns"})
+
+    assert len(replies) == 1
+
+
+def test_a_json_array_is_not_a_request(bot):
+    [reply] = _serve(bot, "[1, 2, 3]")
+
+    assert reply["ok"] is False
+    assert "must be a JSON object" in reply["error"]
+
+
+def test_every_reply_is_one_line_of_json(bot, table):
+    """A pipe reader splits on newlines, so a reply must never contain one."""
+    out = io.StringIO()
+    protocol.serve(
+        bot,
+        stdin=io.StringIO(
+            json.dumps({"op": "message", "external_id": "discord:111", "text": "I search the room"})
+            + "\n"
+        ),
+        stdout=out,
+    )
+
+    lines = out.getvalue().splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["ok"] is True

@@ -11,6 +11,7 @@ Run ``dmai --help``, or ``dmai play <campaign>`` to sit down at a table.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import typer
@@ -24,6 +25,8 @@ from dmai.engine.models import Campaign, CampaignSettings, StoryTone
 from dmai.engine.models.quests import QuestStatus
 from dmai.engine.rules import available_rules
 from dmai.engine.session import GameSession
+from dmai.integrations.openclaw import bot as bot_protocol
+from dmai.integrations.openclaw import OpenClawAdapter
 from dmai.persistence import CampaignStore, SaveError
 
 app = typer.Typer(
@@ -463,6 +466,56 @@ def _handle_command(
     else:
         console.print(f"[red]Unknown command /{command}. Try /help.[/red]")
     return False
+
+
+# --- the OpenClaw-facing bot ------------------------------------------------
+
+
+@app.command("bot")
+def bot(
+    once: str = typer.Option(None, "--once", help="Handle one JSON request and exit."),
+    describe_only: bool = typer.Option(
+        False, "--describe", help="Print the operations this bot accepts, and exit."
+    ),
+    provider: str = typer.Option(None, "--provider", help="DM AI to use for every table."),
+    model: str = typer.Option(None, "--model", help="Model id, when the provider takes one."),
+    root: Path = typer.Option(None, "--root", help="Where campaigns are stored."),
+) -> None:
+    """Run the headless DM that OpenClaw talks to.
+
+    Reads one JSON request per line on stdin and writes one JSON reply per line
+    on stdout, so OpenClaw can drive whole campaigns over a pipe -- no GUI, no
+    port, no Python import. This is the same `OpenClawAdapter` the library
+    exposes; only the transport lives here.
+
+        echo '{"op":"message","external_id":"telegram:44","text":"I look around"}' \\
+          | dmai bot
+
+    Credentials come from the environment, so pointing this and an OpenClaw bot
+    at one ANTHROPIC_API_KEY is all the sharing that is needed.
+    """
+    if describe_only:
+        # stdout stays machine-readable here: this output is meant to be piped.
+        typer.echo(json.dumps(bot_protocol.describe(), indent=2))
+        raise typer.Exit()
+
+    adapter = OpenClawAdapter(
+        _store(root),
+        provider=load_provider(
+            provider or "offline", **({"model": model} if model and provider != "offline" else {})
+        ),
+    )
+
+    if once is not None:
+        try:
+            request = json.loads(once)
+        except json.JSONDecodeError as exc:
+            typer.echo(json.dumps({"ok": False, "op": None, "error": f"invalid JSON: {exc}"}))
+            raise typer.Exit(code=1) from exc
+        typer.echo(json.dumps(bot_protocol.handle(adapter, request), default=str))
+        raise typer.Exit()
+
+    raise typer.Exit(code=bot_protocol.serve(adapter))
 
 
 # --- rendering -------------------------------------------------------------

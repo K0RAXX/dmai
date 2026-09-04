@@ -139,6 +139,33 @@ One adapter serves any number of tables. Sessions are cached per campaign id and
 a chat identity routes to the one campaign it is seated at; a player seated at
 two must name one rather than have the bot guess.
 
+### `dmai bot` — the line protocol
+
+For transports that would rather not import Python, `dmai bot` speaks one JSON
+object per line on stdin and one per line on stdout:
+
+```bash
+dmai bot --describe          # the operations this bot accepts
+echo '{"op":"message","external_id":"telegram:44","text":"I look around"}' | dmai bot
+dmai bot --once '{"op":"list_campaigns"}'
+```
+
+No port, no server, no import — a pipe is enough to run whole campaigns. A
+malformed message comes back as `{"ok": false, "error": ...}` and the bot keeps
+serving; only stdin closing ends it.
+
+Operations are dispatched against an **allowlist** (`CALLABLE_OPERATIONS`), not
+by attribute lookup. The caller is a chat transport carrying text from
+strangers, so `{"op": "_session"}` is refused like any other unknown name.
+
+### Sharing one key with an OpenClaw bot
+
+Credentials are read from the environment by the Anthropic SDK, so pointing both
+at one `ANTHROPIC_API_KEY` is the whole of it — no code, no config bridge. Note
+that OpenClaw's `claude-cli` runtime authenticates with Claude Code's OAuth
+store, which is *not* the `ant auth login` profile the SDK reads; sharing has to
+go through an API key or an explicit setting.
+
 ## Status
 
 Built and tested: dice, rules adapter, character creation and checks, combat

@@ -313,6 +313,25 @@ class OpenClawAdapter:
         self.store.save(session)
         return {"campaign_id": campaign_id, "narration": narration}
 
+    # --- dispatch ----------------------------------------------------------
+
+    def dispatch(self, op: str, args: dict | None = None) -> Any:
+        """Invoke one named operation with keyword arguments.
+
+        This is the contract a transport speaks: a name and a dict, in, and
+        JSON-ready data out.  Restricted to `CALLABLE_OPERATIONS`, so a chat
+        message cannot reach an attribute that was never meant to be remote.
+        """
+        if op not in CALLABLE_OPERATIONS:
+            raise OpenClawError(
+                f"unknown operation {op!r}; available: {', '.join(sorted(CALLABLE_OPERATIONS))}"
+            )
+        try:
+            return getattr(self, op)(**(args or {}))
+        except TypeError as exc:
+            # Wrong or missing arguments from the caller, not a bug in here.
+            raise OpenClawError(f"{op}: {exc}") from exc
+
     # --- internals ---------------------------------------------------------
 
     def _session(self, campaign_id: str) -> GameSession:
@@ -390,5 +409,28 @@ OPERATIONS = (
     "save_campaign",
 )
 
+#: Everything a remote message is allowed to invoke.
+#:
+#: An allowlist rather than `getattr`, because the caller is a chat transport:
+#: without this, a crafted message could reach `_session`, `store`, or any
+#: other attribute on the adapter.  Adding an operation here is a deliberate
+#: act, which is the point.
+CALLABLE_OPERATIONS = (
+    *OPERATIONS,
+    "handle_message",
+    "campaign_for",
+    "list_campaigns",
+    "close_campaign",
+    "join",
+    "end_combat",
+    "recap",
+    "resume",
+)
 
-__all__ = ["OPERATIONS", "OpenClawAdapter", "OpenClawError"]
+
+__all__ = [
+    "CALLABLE_OPERATIONS",
+    "OPERATIONS",
+    "OpenClawAdapter",
+    "OpenClawError",
+]
