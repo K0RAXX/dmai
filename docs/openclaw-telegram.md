@@ -58,13 +58,39 @@ A separate workspace keeps the DM's instructions away from your main agent, and
 your main agent's skills away from the game.
 
 `dmai` must be on the PATH the OpenClaw gateway runs with — check with
-`dmai bot --describe`. If it isn't, use the full path to `dmai.exe` in the
-skill's commands.
+`dmai bot --describe`. **On this machine it is not**, so the installed copy of
+the skill was rewritten to call
+`"D:\D&D AI DEV\.venv\Scripts\dmai.exe"` directly. The repo version keeps
+the plain `dmai`; if you ever put it on PATH, re-copy the repo version.
+
+Verify the skill loaded for the right agent, and only that agent:
+
+```bash
+openclaw skills list --agent dungeon-master   # 🎲 dungeon-master, ✓ ready
+openclaw skills list --agent main             # should NOT list it
+```
 
 ## 4. Merge this into `~/.openclaw/openclaw.json`
 
+> **Already applied on this machine** (backup: `~/.openclaw/openclaw.json.pre-dm-*`).
+> The Telegram account is present but `enabled: false` until its token file
+> exists — see step 5.
+
 Back it up first (`Copy-Item ~\.openclaw\openclaw.json ~\.openclaw\openclaw.json.pre-dm`).
-Merge — do not replace — these three sections:
+Merge — do not replace — these sections.
+
+**Two traps worth knowing before you hand-edit this file:**
+
+*The default agent moves.* Routing picks the default agent as
+`agents.list[].default`, **else the first list entry**. If `agents.list` did not
+exist and you add one containing only the DM, the DM silently becomes the
+default for every message that matches no binding — including your existing
+bots. So `main` goes in the list first, explicitly `default: true`, and the
+existing accounts get explicit bindings rather than relying on a fallback.
+
+*The workspace nests.* `agents.defaults.workspace` is set, so an agent with no
+stated workspace lands at `<defaults.workspace>/<agentId>` — inside the main
+workspace, sharing its skills. State `workspace` explicitly.
 
 ```json5
 {
@@ -105,6 +131,17 @@ The binding is what stops game messages reaching your main agent, and vice
 versa. Without it, every routing rule falls through to the default agent.
 
 ## 5. Start it
+
+Once the token file from step 2 exists, enable the account:
+
+```powershell
+$c = Get-Content "$HOME\.openclaw\openclaw.json" -Raw | ConvertFrom-Json
+$c.channels.telegram.accounts.'dungeon-master'.enabled = $true
+$c | ConvertTo-Json -Depth 100 | Set-Content "$HOME\.openclaw\openclaw.json"
+```
+
+It ships disabled because the gateway reloads this file, and an enabled account
+whose token file is missing is a startup failure.
 
 ```bash
 openclaw gateway
