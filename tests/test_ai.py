@@ -394,28 +394,55 @@ class _Block:
 
 
 class _Usage:
-    def __init__(self, input_tokens=100, output_tokens=50, cache_read_input_tokens=0):
+    def __init__(self, input_tokens=100, output_tokens=50, cache_read_input_tokens=0,
+                 iterations=None):
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
         self.cache_read_input_tokens = cache_read_input_tokens
+        self.iterations = iterations or []
+
+
+class _Named:
+    def __init__(self, model):
+        self.model = model
+
+
+class _FallbackBlock:
+    """The block the API emits where a model declined and another took over."""
+
+    def __init__(self, origin, destination):
+        self.type = "fallback"
+        self.from_ = _Named(origin)
+        self.to = _Named(destination)
+
+
+class _Iteration:
+    def __init__(self, type="fallback_message"):
+        self.type = type
 
 
 class _Response:
-    def __init__(self, *, text="", parsed=None, stop_reason="end_turn", details=None):
-        self.content = [_Block(text)] if text else []
+    def __init__(self, *, text="", parsed=None, stop_reason="end_turn", details=None,
+                 model="claude-opus-5", content=None, iterations=None):
+        self.content = content if content is not None else ([_Block(text)] if text else [])
         self.parsed_output = parsed
         self.stop_reason = stop_reason
         self.stop_details = details
-        self.model = "claude-opus-5"
-        self.usage = _Usage()
+        self.model = model
+        self.usage = _Usage(iterations=iterations)
 
 
 class _StubClient:
-    """Records what the provider sent, and replies with what it is told to."""
+    """Records what the provider sent, and replies with what it is told to.
 
-    def __init__(self, response):
+    Both the plain and the beta message surfaces are recorded, so a test can
+    assert which endpoint a call went to.
+    """
+
+    def __init__(self, response, *, beta_error=None):
         self.response = response
         self.calls: list[dict] = []
+        self.beta_calls: list[dict] = []
         outer = self
 
         class _Messages:
@@ -427,14 +454,41 @@ class _StubClient:
                 outer.calls.append(kwargs)
                 return outer.response
 
+        class _BetaMessages:
+            def create(self, **kwargs):
+                outer.beta_calls.append(kwargs)
+                if beta_error is not None:
+                    raise beta_error
+                return outer.response
+
+        class _Beta:
+            messages = _BetaMessages()
+
         self.messages = _Messages()
+        self.beta = _Beta()
 
 
-def _claude(response):
+def _claude(response, *, beta_error=None, **kwargs):
     from dmai.ai.providers.claude import ClaudeProvider
 
-    stub = _StubClient(response)
-    return ClaudeProvider(client=stub), stub
+    stub = _StubClient(response, beta_error=beta_error)
+    return ClaudeProvider(client=stub, **kwargs), stub
+
+
+class _HttpResponse:
+    """The minimum an anthropic APIStatusError needs to be constructed."""
+
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+        self.headers: dict[str, str] = {}
+        self.request = None
+
+
+def _raise(error):
+    def _boom(**kwargs):
+        raise error
+
+    return _boom
 
 
 def test_claude_returns_text_and_prices_the_call():
@@ -445,6 +499,7 @@ def test_claude_returns_text_and_prices_the_call():
     assert completion.text == "The hall is silent."
     assert completion.model == "claude-opus-5"
     assert completion.cost_usd > 0
+    assert completion.meta["fell_back"] is False
 
 
 def test_claude_caches_the_standing_system_prompt():
@@ -453,7 +508,7 @@ def test_claude_caches_the_standing_system_prompt():
 
     provider.complete(system="the DM persona", messages=[{"role": "user", "content": "go"}])
 
-    system = stub.calls[0]["system"]
+    system = stub.beta_calls[0]["system"]
     assert system[0]["cache_control"] == {"type": "ephemeral"}
     assert system[0]["text"] == "the DM persona"
 
@@ -503,4 +558,171 @@ def test_a_refusing_model_does_not_end_the_turn(session, dm, vale):
     result = act(session, dm, "I search the room", vale.id)
 
     assert result.narration  # the offline DM finished the turn
+    assert any("declined" in note for note in dm.last.degraded)
+
+
+# --- refusal fallbacks -----------------------------------------------------
+#
+# A fantasy table runs into policy declines more than most software does:
+# violence is the subject matter. The narration path therefore opts into
+# server-side fallbacks, so a declined scene is re-run on another model inside
+# the same call rather than dropping to the offline narrator.
+
+
+def test_narration_opts_into_server_side_fallbacks():
+    from dmai.ai.providers.claude import FALLBACK_DEFAULT_BETA
+
+    provider, stub = _claude(_Response(text="The siege begins."))
+
+    provider.complete(system="s", messages=[{"role": "user", "content": "go"}])
+
+    assert stub.calls == []  # not the plain endpoint
+    call = stub.beta_calls[0]
+    assert call["fallbacks"] == "default"
+    assert call["betas"] == [FALLBACK_DEFAULT_BETA]
+
+
+def test_the_beta_header_matches_the_form_of_the_parameter():
+    """Pairing one form with the other header is a 400, so they travel together."""
+    from dmai.ai.providers.claude import FALLBACK_ARRAY_BETA, FALLBACK_DEFAULT_BETA
+
+    pinned, stub = _claude(
+        _Response(text="ok"), fallbacks=[{"model": "claude-opus-4-8"}]
+    )
+    pinned.complete(system="s", messages=[])
+
+    assert stub.beta_calls[0]["betas"] == [FALLBACK_ARRAY_BETA]
+    assert stub.beta_calls[0]["fallbacks"] == [{"model": "claude-opus-4-8"}]
+
+    default, other = _claude(_Response(text="ok"))
+    default.complete(system="s", messages=[])
+
+    assert other.beta_calls[0]["betas"] == [FALLBACK_DEFAULT_BETA]
+
+
+def test_interpretation_does_not_use_the_beta_endpoint():
+    """Only narration falls back; a refused interpretation degrades locally."""
+    provider, stub = _claude(_Response(parsed=ActionInterpretation(intent=IntentKind.SEARCH)))
+
+    provider.parse(system="s", messages=[], schema=ActionInterpretation)
+
+    assert stub.beta_calls == []
+    assert "fallbacks" not in stub.calls[0]
+
+
+def test_opting_out_of_fallbacks_uses_the_plain_endpoint():
+    provider, stub = _claude(_Response(text="ok"), fallbacks=None)
+
+    provider.complete(system="s", messages=[])
+
+    assert stub.beta_calls == []
+    assert stub.calls
+
+
+def test_a_switched_turn_reports_which_model_answered():
+    provider, _ = _claude(
+        _Response(
+            model="claude-opus-4-8",
+            content=[_FallbackBlock("claude-opus-5", "claude-opus-4-8"), _Block("The siege.")],
+        )
+    )
+
+    completion = provider.complete(system="s", messages=[])
+
+    assert completion.text == "The siege."  # the fallback block is not prose
+    assert completion.meta["fell_back"] is True
+    assert completion.meta["fallback_switches"] == ["claude-opus-5 -> claude-opus-4-8"]
+    assert completion.model == "claude-opus-4-8"
+
+
+def test_a_sticky_turn_is_noticed_without_a_fallback_block():
+    """Once a conversation falls back, later turns carry only a usage iteration."""
+    provider, _ = _claude(
+        _Response(text="The siege continues.", model="claude-opus-4-8",
+                  iterations=[_Iteration()])
+    )
+
+    completion = provider.complete(system="s", messages=[])
+
+    assert completion.meta["fell_back"] is True
+    assert completion.meta["fallback_switches"] == []
+    assert completion.meta["served_by"] == "claude-opus-4-8"
+
+
+def test_a_fallback_is_priced_at_the_model_that_served_it():
+    from dmai.ai.providers.claude import estimate_cost
+
+    provider, _ = _claude(_Response(text="ok", model="claude-haiku-4-5"))
+
+    completion = provider.complete(system="s", messages=[])
+
+    assert completion.cost_usd == pytest.approx(estimate_cost("claude-haiku-4-5", 100, 50))
+
+
+def test_a_whole_chain_refusing_still_raises():
+    from dmai.ai.providers import ProviderRefusal
+
+    class _Details:
+        category = "violence"
+
+    provider, _ = _claude(_Response(stop_reason="refusal", details=_Details()))
+
+    with pytest.raises(ProviderRefusal, match="violence"):
+        provider.complete(system="s", messages=[])
+
+
+def test_an_account_without_the_beta_narrates_anyway():
+    """A 400 on the beta means retry once without it -- not lose the turn."""
+    import anthropic
+
+    refused = anthropic.BadRequestError(
+        "unsupported beta", response=_HttpResponse(400), body=None
+    )
+    provider, stub = _claude(_Response(text="The hall is silent."), beta_error=refused)
+
+    first = provider.complete(system="s", messages=[])
+    second = provider.complete(system="s", messages=[])
+
+    assert first.text == "The hall is silent."
+    assert second.text == "The hall is silent."
+    # Tried the beta once, then stopped trying.
+    assert len(stub.beta_calls) == 1
+    assert len(stub.calls) == 2
+    assert "refusal fallback" not in provider.health()
+
+
+def test_an_older_sdk_without_the_parameter_narrates_anyway():
+    provider, stub = _claude(
+        _Response(text="ok"),
+        beta_error=TypeError("create() got an unexpected keyword argument 'fallbacks'"),
+    )
+
+    assert provider.complete(system="s", messages=[]).text == "ok"
+    assert len(stub.calls) == 1
+
+
+def test_a_real_bad_request_is_not_mistaken_for_a_missing_beta():
+    import anthropic
+
+    provider, stub = _claude(_Response(text="ok"), fallbacks=None)
+    stub.messages.create = _raise(
+        anthropic.BadRequestError("max_tokens too large", response=_HttpResponse(400), body=None)
+    )
+
+    with pytest.raises(ProviderError, match="Anthropic rejected the request"):
+        provider.complete(system="s", messages=[])
+
+
+def test_the_table_is_told_when_another_model_finished_the_scene(session, dm, vale):
+    class Switched(OfflineProvider):
+        def complete(self, **kwargs):
+            completion = super().complete(**kwargs)
+            completion.model = "claude-opus-4-8"
+            completion.meta["fell_back"] = True
+            return completion
+
+    dm.provider = Switched()
+    act(session, dm, "I search the room", vale.id)
+
+    assert dm.last.served_by == "claude-opus-4-8"
     assert any("declined" in note for note in dm.last.degraded)

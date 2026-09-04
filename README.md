@@ -100,10 +100,18 @@ the DM narrates the log rather than authoring it. Every id the model produces is
 checked against real state first, so a hallucinated target is dropped rather
 than attacked.
 
-There is always a floor. `OfflineProvider` interprets by keyword and narrates by
-restating facts — no network, no key, no model. If a provider errors, refuses,
-or returns nothing, the DM degrades to it mid-turn and play continues; `/dm` at
-the table shows which DM answered and why.
+A fantasy table meets policy declines more than most software does — violence is
+the subject matter — so narration opts into server-side refusal fallbacks
+(`fallbacks: "default"`, routed by refusal category). A declined scene is re-run
+on another model inside the same call, and the turn is priced at whichever model
+actually served it. Interpretation stays on the plain endpoint: a refused
+interpretation already degrades to the local classifier.
+
+There is always a floor beneath that. `OfflineProvider` interprets by keyword and
+narrates by restating facts — no network, no key, no model. If a provider errors,
+returns nothing, or the whole fallback chain refuses, the DM degrades to it
+mid-turn and play continues. `/dm` at the table shows which DM answered, and a
+turn finished by a fallback model says so.
 
 ```bash
 dmai new "Ashes of Emberfall" --provider claude --model claude-opus-5

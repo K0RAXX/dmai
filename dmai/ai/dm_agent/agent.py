@@ -92,6 +92,9 @@ class TurnDiagnostics:
     provider: str = ""
     interpreted_by: str = ""
     narrated_by: str = ""
+    #: The model that actually answered.  Not always the one asked for: a
+    #: declined scene is re-run server-side on a fallback model.
+    served_by: str = ""
     rationale: str = ""
     checks_requested: int = 0
     events_appended: int = 0
@@ -315,6 +318,13 @@ class DungeonMaster:
             )
             if completion.text.strip():
                 diagnostics.narrated_by = self.provider.id
+                diagnostics.served_by = completion.model
+                if completion.meta.get("fell_back"):
+                    # Worth saying out loud: the scene was declined and another
+                    # model finished it, so the voice may shift mid-campaign.
+                    diagnostics.degraded.append(
+                        f"narration: the scene was declined; {completion.model} answered instead"
+                    )
                 return completion.text.strip(), completion.cost_usd
             diagnostics.degraded.append("narration: provider returned nothing")
         except ProviderError as exc:
@@ -324,6 +334,7 @@ class DungeonMaster:
             system=system, messages=messages, max_tokens=NARRATION_TOKENS
         )
         diagnostics.narrated_by = self.fallback.id
+        diagnostics.served_by = self.fallback.id
         return fallback.text.strip(), 0.0
 
     # --- memory ------------------------------------------------------------
