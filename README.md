@@ -4,8 +4,8 @@ An adaptive tabletop RPG engine: an AI Dungeon Master that can run a whole
 fantasy campaign for one player or a table of them.
 
 The important architectural claim is that **the engine is the product**. The
-CLI, the OpenClaw agent, and the planned desktop window and HTTP API are all
-clients of one `GameSession`. Delete any of them and the game loses nothing.
+CLI, the desktop window, the OpenClaw agent and the offline SDK are all clients
+of one `GameSession`. Delete any of them and the game loses nothing.
 
 ## Quick start
 
@@ -52,8 +52,13 @@ dmai/
 ├── persistence/     Saving and loading; stores the log, never the state
 ├── cli/             Layer C -- the terminal client
 ├── api/             Layer C -- HTTP/WebSocket (not yet built)
-├── desktop/         Layer C -- the window (not yet built)
+├── desktop/         Layer C -- the window
+│   ├── bridge.py    The window's only door into the game
+│   ├── app.py       pywebview host
+│   └── web/         The medieval table: HTML, CSS, JS
 └── integrations/    OpenClaw adapter -- headless, multi-table
+
+sdk/                 dmai-sdk -- the embeddable, zero-network engine
 ```
 
 `rules_packs/srd51/` holds the rules as **data** (CC-BY-4.0 SRD 5.1). Swapping
@@ -79,12 +84,21 @@ which is what makes replaying one twice safe.
 ```bash
 python -m pytest                     # the whole suite
 python -m pytest tests/test_session.py -q
+python -m pytest tests/test_desktop.py -q   # the window, headless
+
+cd sdk && python -m pytest           # the SDK has its own suite
 ```
 
-`tests/test_architecture.py` is the load-bearing one: it fails the build if
-anything in `dmai/engine` imports the AI layer, the API, persistence, a UI, or
-any networking module. That constraint is what keeps the engine testable
-without a language model and swappable between clients.
+Two tests are load-bearing, and both are about boundaries rather than features:
+
+- `tests/test_architecture.py` fails the build if anything in `dmai/engine`
+  imports the AI layer, the API, persistence, a UI, or any networking module.
+  That constraint is what keeps the engine testable without a language model and
+  swappable between clients.
+- `sdk/tests/test_offline.py` plays a whole campaign with `socket.socket`
+  replaced by a trap, so the SDK's offline claim is checked rather than asserted.
+
+`node --check dmai/desktop/web/js/*.js` covers the window's JavaScript.
 
 ## The DM AI
 
@@ -120,6 +134,72 @@ dmai play "Ashes of Emberfall" --as James --resume
 
 Credentials come from the environment (`ANTHROPIC_API_KEY`, or `ant auth
 login`). A campaign save stores the provider *id* and never a key.
+
+## The desktop window
+
+A native window that plays the same campaigns as the CLI, themed as a table in a
+scriptorium: parchment panels pinned to dark leather, a wax seal on every
+chronicle, gold rules, and a drop cap on the DM's prose.
+
+```bash
+pip install -e ".[desktop]"
+dmai-desktop                     # or: python -m dmai.desktop
+dmai-desktop --root D:/campaigns --provider claude --model claude-opus-5
+```
+
+It is a *peer* of the CLI, not a wrapper around it — both drive one
+`GameSession`, and a campaign started in one opens in the other. There is no
+server: no port is opened and no HTTP is spoken. The page and the engine share a
+process and talk through a function call, which is why the window works with the
+network unplugged (offline DM) as well as with a model behind it.
+
+Three columns: the party and its quests on the left, the chronicle in the middle,
+initiative and dice on the right. Every panel is drawn from one `view()` call —
+itself a fold of the event log — so the sheets, the turn order and the transcript
+cannot drift out of agreement. Slash commands (`/roll`, `/narrate`, `/scene`,
+`/recap`, `/mark`, `/marks`, `/help`) mirror the CLI's vocabulary.
+
+`dmai/desktop/bridge.py` is the whole interface, and it imports no GUI toolkit —
+which is why `tests/test_desktop.py` exercises everything the window can do
+headlessly, without opening one.
+
+To ship it as a single application:
+
+```bash
+pip install -e ".[desktop,dev]"
+pyinstaller dmai-desktop.spec        # -> dist/DungeonMaster/DungeonMaster.exe
+```
+
+The spec bundles the page and the rules packs as data, and names `anthropic` as
+a hidden import — `ClaudeProvider` imports the SDK lazily so that `dmai.ai` loads
+without it, and that lazy import is invisible to PyInstaller's analysis, which
+would otherwise ship a binary whose Claude DM fails on first use.
+
+## The offline SDK
+
+`sdk/` is a separately packaged `dmai-sdk`: the engine as an embeddable library,
+with **no network, no API key and no model**.
+
+```python
+from dmai_sdk import Table
+
+table = Table.new("Ashes of Emberfall", seed=1234)
+table.add_hero("Vale", cls="fighter", level=2)
+
+turn = table.act("I search the room")
+print(turn.narration, turn.rolls)
+
+table.save("emberfall.dmai")
+```
+
+There is no provider argument to point at a model, and the guarantee is tested
+as behaviour rather than asserted: `sdk/tests/test_offline.py` replaces
+`socket.socket` with a trap and plays a whole campaign through it, so one
+outbound connection fails the build.
+
+A seeded table is deterministic, which makes it usable as a test fixture. Saves
+use the same bundle format the CLI imports, so `table.save()` opens with
+`dmai import` and vice versa. See `sdk/README.md`.
 
 ## OpenClaw
 
@@ -171,10 +251,9 @@ go through an API key or an explicit setting.
 Built and tested: dice, rules adapter, character creation and checks, combat
 with tactics, inventory, encounter budgets, quests and consequences, the world
 atlas and simulator, the session facade, save/load/export, the CLI, the DM AI
-layer, and the OpenClaw adapter.
+layer, the OpenClaw adapter, the desktop window, and the offline SDK.
 
-Next: the HTTP API (`dmai/api`) and the desktop window (`dmai/desktop`) — each a
-client of the same `GameSession`.
+Next: the HTTP API (`dmai/api`) — a client of the same `GameSession`.
 
 ## Licence
 

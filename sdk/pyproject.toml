@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dmai-sdk"
+version = "0.1.0"
+description = "An offline D&D engine you can embed: dice, characters, combat, quests and a Dungeon Master, with no network and no model."
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["dnd", "rpg", "tabletop", "srd", "game-engine", "offline"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment :: Role-Playing",
+    "Typing :: Typed",
+]
+
+# The SDK adds nothing to what the engine already needs: pydantic describes the
+# models, and `dmai` carries the engine, the offline DM and the save format.
+# Nothing here pulls in a model client -- `anthropic` is an extra of `dmai` and
+# this package never asks for it.
+#
+# The guarantee this package makes is about behaviour rather than about a
+# dependency list, and it is tested that way: tests/test_offline.py plays a
+# whole campaign with `socket.socket` replaced by a trap, so a single outbound
+# connection anywhere beneath `Table` fails the build.
+dependencies = [
+    "pydantic>=2.9",
+    "dmai>=0.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.urls]
+Source = "https://github.com/K0RAXX/dmai"
+
+[tool.setuptools.packages.find]
+include = ["dmai_sdk*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
