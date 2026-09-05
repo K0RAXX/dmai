@@ -1,0 +1,278 @@
+/* The medieval theme: tokens, materials, and furniture.
+ *
+ * Everything here is drawn in CSS -- no image files and no web fonts, because
+ * the desktop client has to look right with the network unplugged and inside a
+ * PyInstaller bundle.  Parchment is layered gradients, the leather ground is a
+ * vignette, and the ornaments are inline SVG in the page.
+ *
+ * The palette is four materials:
+ *   ink      -- oak gall on vellum, the text
+ *   vellum   -- the parchment panels are pressed from
+ *   leather  -- the table the parchment lies on
+ *   gilt     -- gold leaf, used only for what the eye should go to first
+ *   wax      -- seal red, used only for loss: damage, death, failure
+ */
+
+:root {
+  /* --- materials ------------------------------------------------------- */
+  --leather-950: #0f0b08;
+  --leather-900: #17110c;
+  --leather-800: #211913;
+  --leather-700: #2e231a;
+  --leather-600: #3d2f23;
+
+  --vellum-100: #f4ead2;
+  --vellum-200: #ecdfc2;
+  --vellum-300: #ddcda9;
+  --vellum-400: #c9b68e;
+  --vellum-500: #ab9670;
+
+  --ink-900: #241a10;
+  --ink-800: #33261a;
+  --ink-700: #4a3826;
+  --ink-600: #6b5540;
+  --ink-500: #8a715a;
+
+  --gilt-400: #e6c76a;
+  --gilt-500: #d4af37;
+  --gilt-600: #b08d24;
+  --gilt-700: #7d6318;
+
+  --wax-500: #a52a1e;
+  --wax-600: #8b2318;
+  --wax-700: #6d1a12;
+
+  --moss-500: #5f7a43;
+  --moss-600: #4a6134;
+  --steel-500: #6d7a86;
+  --arcane-500: #7a5fa8;
+
+  /* --- roles ------------------------------------------------------------ */
+  --ground: var(--leather-900);
+  --panel: var(--vellum-200);
+  --panel-edge: var(--vellum-400);
+  --text: var(--ink-900);
+  --text-soft: var(--ink-600);
+  --text-faint: var(--ink-500);
+  --accent: var(--gilt-600);
+
+  /* --- type ------------------------------------------------------------- */
+  /* System stacks only.  Palatino and Georgia both carry old-style figures
+     and a humanist axis, which is as close to a scriptorium as a machine has
+     without shipping a font file. */
+  --font-display: "Palatino Linotype", "Book Antiqua", Palatino, "URW Palladio L", Georgia, serif;
+  --font-body: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --font-hand: "Segoe Script", "Bradley Hand", "Lucida Handwriting", cursive;
+  --font-mono: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+
+  /* --- metrics ---------------------------------------------------------- */
+  --radius: 3px;
+  --panel-pad: 14px;
+  --rule: 1px solid var(--panel-edge);
+
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Materials
+ * ---------------------------------------------------------------------- */
+
+/* The table: dark oiled leather, lit from above by a candle that is not
+   quite centred, because a symmetrical highlight reads as plastic. */
+.material-leather {
+  background:
+    radial-gradient(120% 90% at 42% -10%, rgba(212, 175, 55, 0.10) 0%, transparent 55%),
+    radial-gradient(90% 70% at 80% 110%, rgba(139, 35, 24, 0.10) 0%, transparent 60%),
+    repeating-linear-gradient(
+      113deg,
+      rgba(255, 255, 255, 0.012) 0px,
+      rgba(255, 255, 255, 0.012) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    linear-gradient(168deg, var(--leather-800) 0%, var(--leather-950) 100%);
+}
+
+/* Parchment: a warm ground, a faint fibre grain running two ways, and the
+   slight darkening at the edges that pressed vellum always has. */
+.material-vellum {
+  background:
+    radial-gradient(140% 120% at 50% 0%, rgba(255, 252, 240, 0.55) 0%, transparent 62%),
+    repeating-linear-gradient(
+      92deg,
+      rgba(139, 107, 66, 0.045) 0px,
+      rgba(139, 107, 66, 0.045) 1px,
+      transparent 1px,
+      transparent 5px
+    ),
+    repeating-linear-gradient(
+      3deg,
+      rgba(139, 107, 66, 0.035) 0px,
+      rgba(139, 107, 66, 0.035) 1px,
+      transparent 1px,
+      transparent 7px
+    ),
+    linear-gradient(172deg, var(--vellum-100) 0%, var(--vellum-200) 48%, var(--vellum-300) 100%);
+  color: var(--text);
+  box-shadow:
+    inset 0 0 44px rgba(120, 90, 50, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 10px 26px rgba(0, 0, 0, 0.45);
+}
+
+/* An iron band: the dark strip a panel head or a banner sits on. */
+.material-iron {
+  background:
+    linear-gradient(180deg, var(--leather-700) 0%, var(--leather-900) 100%);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Furniture
+ * ---------------------------------------------------------------------- */
+
+/* Gold rule: the thin double line that separates a heading from its content. */
+.rule-gilt {
+  border: 0;
+  height: 3px;
+  background:
+    linear-gradient(90deg, transparent, var(--gilt-600) 18%, var(--gilt-400) 50%, var(--gilt-600) 82%, transparent);
+  opacity: 0.55;
+  margin: 10px 0;
+}
+
+/* A drop cap, for the first letter of a narration paragraph. */
+.dropcap::first-letter {
+  float: left;
+  font-family: var(--font-display);
+  font-size: 3.1em;
+  line-height: 0.82;
+  padding: 0.06em 0.10em 0 0;
+  color: var(--wax-600);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+/* The wax seal used as a bullet and on the campaign cards. */
+.seal {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background:
+    radial-gradient(70% 70% at 34% 28%, var(--wax-500) 0%, var(--wax-600) 55%, var(--wax-700) 100%);
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.22),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.35),
+    0 2px 5px rgba(0, 0, 0, 0.4);
+  color: rgba(255, 224, 200, 0.85);
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  flex: none;
+}
+
+/* Corner nails, so a parchment panel reads as pinned to the table. */
+.nailed { position: relative; }
+.nailed::before,
+.nailed::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(60% 60% at 35% 30%, #8d7a5a, #4a3c27 70%, #2b2216);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.nailed::before { left: 7px; }
+.nailed::after { right: 7px; }
+
+/* ---------------------------------------------------------------------- *
+ * Controls
+ * ---------------------------------------------------------------------- */
+
+.btn {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.045em;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--leather-600);
+  background: linear-gradient(180deg, var(--leather-600), var(--leather-800));
+  color: var(--vellum-200);
+  cursor: pointer;
+  transition: transform 90ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 2px 5px rgba(0, 0, 0, 0.35);
+}
+.btn:hover {
+  border-color: var(--gilt-700);
+  color: var(--gilt-400);
+}
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible {
+  outline: 2px solid var(--gilt-500);
+  outline-offset: 2px;
+}
+.btn[disabled] { opacity: 0.45; cursor: default; transform: none; }
+
+.btn-gilt {
+  border-color: var(--gilt-700);
+  background: linear-gradient(180deg, var(--gilt-500), var(--gilt-700));
+  color: var(--leather-950);
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.btn-gilt:hover {
+  color: var(--leather-950);
+  background: linear-gradient(180deg, var(--gilt-400), var(--gilt-600));
+}
+
+.btn-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--vellum-400);
+  box-shadow: none;
+}
+.btn-quiet:hover { color: var(--gilt-400); border-color: var(--leather-600); }
+
+.btn-tiny { padding: 3px 9px; font-size: 11.5px; }
+
+/* Inputs are cut into the parchment rather than laid on it. */
+.field {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--ink-900);
+  background: rgba(255, 252, 240, 0.72);
+  border: 1px solid var(--vellum-500);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  width: 100%;
+  box-shadow: inset 0 2px 4px rgba(110, 85, 50, 0.18);
+}
+.field::placeholder { color: var(--ink-500); opacity: 0.75; }
+.field:focus {
+  outline: none;
+  border-color: var(--gilt-600);
+  box-shadow: inset 0 2px 4px rgba(110, 85, 50, 0.18), 0 0 0 2px rgba(212, 175, 55, 0.28);
+}
+
+/* Scrollbars, dressed to match. */
+* { scrollbar-width: thin; scrollbar-color: var(--leather-600) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--leather-600), var(--leather-800));
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--gilt-700); background-clip: padding-box; }
+
+/* A parchment panel gets a lighter scrollbar so it does not punch a hole. */
+.material-vellum *::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--vellum-400), var(--vellum-500));
+  background-clip: padding-box;
+}

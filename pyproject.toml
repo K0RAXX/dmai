@@ -29,12 +29,14 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24", "pytest-timeout>=2.3", "pyinstaller>
 
 [project.scripts]
 dmai = "dmai.cli.main:run"
+dmai-desktop = "dmai.desktop.app:main"
 
 [tool.setuptools.packages.find]
 include = ["dmai*"]
 
 [tool.setuptools.package-data]
 "dmai.web" = ["**/*"]
+"dmai.desktop" = ["web/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
