@@ -11,6 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from dmai.cli.main import app
+from dmai.engine.models.events import EventType
 from dmai.persistence import CampaignStore
 
 
@@ -85,6 +86,33 @@ def test_a_played_session_survives_quitting_and_reopening(runner, home):
 
     assert "The inn is warm." in log.output
     assert "I ask about the caravan" in log.output
+
+
+def test_a_players_line_is_recorded_once_not_twice(runner, home):
+    """`player_says` logs, and `take_turn` logs -- doing both duplicated it."""
+    run(runner, "new", "Emberfall", "--seed", "7")
+    run(runner, "character", "add", "Emberfall", "Vale", "--player", "James")
+    run(
+        runner,
+        "play",
+        "Emberfall",
+        "--as",
+        "James",
+        stdin="I ask about the caravan\n/quit\n",
+    )
+
+    store = CampaignStore(home / "campaigns")
+    session = store.load(store.list_campaigns()[0].id)
+    spoken = [
+        event
+        for event in session.store
+        if event.type is EventType.PLAYER_ACTION
+        and event.data.get("text") == "I ask about the caravan"
+    ]
+
+    assert len(spoken) == 1
+    # And one action id, not two events sharing one.
+    assert len({event.data["action_id"] for event in spoken}) == 1
 
 
 def test_a_checkpoint_can_be_rolled_back_to_from_the_table(runner, home):

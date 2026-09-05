@@ -122,7 +122,12 @@ class DungeonMaster:
     # --- the loop ----------------------------------------------------------
 
     def take_turn(self, action: PlayerAction) -> ActionResult:
-        """Run one player action all the way through (spec section 9)."""
+        """Run one player action all the way through (spec section 9).
+
+        The action is recorded here, before it is interpreted, so callers pass
+        a `PlayerAction` they built rather than one they already logged with
+        `GameSession.player_says` -- doing both writes the player's line twice.
+        """
         session = self.session
         diagnostics = TurnDiagnostics(provider=self.provider.id)
 

@@ -30,6 +30,7 @@ from typing import Any
 from dmai.ai.dm_agent.agent import DungeonMaster
 from dmai.ai.providers import AIProvider, OfflineProvider
 from dmai.engine.characters.builder import export_character
+from dmai.engine.models.actions import PlayerAction
 from dmai.engine.models.base import Visibility
 from dmai.engine.models.campaign import Campaign, CampaignSettings
 from dmai.engine.session import GameSession
@@ -238,7 +239,16 @@ class OpenClawAdapter:
         session = self._session(campaign_id)
         player_id, character_id = self._seat(session, external_id, player_id, character_id)
 
-        action = session.player_says(text, character_id=character_id, player_id=player_id)
+        # Built rather than logged: `take_turn` records the action itself, so
+        # going through `session.player_says` here would put the player's line
+        # in the log twice -- and a chat transport replays that log back to the
+        # table.
+        action = PlayerAction(
+            campaign_id=session.campaign.id,
+            player_id=player_id,
+            character_id=character_id,
+            text=text,
+        )
         result = self._agent(campaign_id).take_turn(action)
         self.store.save(session)
 

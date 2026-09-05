@@ -285,7 +285,15 @@ class GameSession:
     def player_says(
         self, text: str, *, character_id: str | None = None, player_id: str | None = None
     ) -> PlayerAction:
-        """Convenience wrapper: build the action, log it, hand it back."""
+        """Convenience wrapper: build the action, log it, hand it back.
+
+        For a table with no AI DM -- a human running the game, or a transport
+        that only wants the line on the record.  **Do not pair this with
+        `DungeonMaster.take_turn`**, which records the action itself: the two
+        together put the player's line in the log twice.  A client that is
+        about to take a DM turn should build the `PlayerAction` directly and
+        let `take_turn` log it.
+        """
         action = PlayerAction(
             campaign_id=self.campaign.id,
             player_id=player_id,

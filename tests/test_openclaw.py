@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from dmai.engine.models.events import EventType
 from dmai.integrations.openclaw import OPERATIONS, OpenClawAdapter, OpenClawError
 from dmai.integrations.openclaw import bot as protocol
 from dmai.persistence import CampaignStore
@@ -34,6 +35,26 @@ def table(bot: OpenClawAdapter) -> dict:
         external_id="discord:111",
     )
     return {"campaign": campaign, "seat": seat, "character": character}
+
+
+def test_a_players_line_is_recorded_once_not_twice(bot, table):
+    """`player_says` logs, and `take_turn` logs -- doing both duplicated it.
+
+    A chat transport reads the log back to the room, so a duplicate here is
+    not a cosmetic problem: the bot repeats the player to themselves.
+    """
+    campaign_id = table["campaign"]["campaign_id"]
+    bot.submit_player_action(campaign_id, "I ask about the caravan", external_id="discord:111")
+
+    session = bot.store.load(campaign_id)
+    spoken = [
+        event
+        for event in session.store
+        if event.type is EventType.PLAYER_ACTION
+        and event.data.get("text") == "I ask about the caravan"
+    ]
+
+    assert len(spoken) == 1
 
 
 def test_every_operation_the_spec_names_exists(bot):

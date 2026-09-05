@@ -21,7 +21,7 @@ from rich.table import Table
 
 from dmai.ai.dm_agent.agent import DungeonMaster
 from dmai.ai.providers import available_providers, load_provider
-from dmai.engine.models import Campaign, CampaignSettings, StoryTone
+from dmai.engine.models import Campaign, CampaignSettings, PlayerAction, StoryTone
 from dmai.engine.models.quests import QuestStatus
 from dmai.engine.rules import available_rules
 from dmai.engine.session import GameSession
@@ -372,7 +372,15 @@ def play(
                 break
             continue
 
-        action = session.player_says(text, character_id=character_id, player_id=player_id)
+        # Built rather than logged: `take_turn` records the action itself, so
+        # going through `session.player_says` here would put the player's line
+        # in the log twice.
+        action = PlayerAction(
+            campaign_id=session.campaign.id,
+            player_id=player_id,
+            character_id=character_id,
+            text=text,
+        )
         result = dm.take_turn(action)
         _print_turn(dm, result)
         store.save(session)
