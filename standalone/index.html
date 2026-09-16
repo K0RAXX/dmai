@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DungeonMaster AI</title>
+<link rel="stylesheet" href="src/ui/styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ==================== THE LIBRARY ==================== -->
+  <div class="screen library" id="screen-library">
+    <div class="library-inner">
+
+      <div class="masthead">
+        <div>
+          <h1>Dungeon<span class="ember">Master</span> AI</h1>
+          <p class="tagline">
+            An adaptive tabletop RPG engine that runs a whole fantasy campaign
+            for you — offline, in this one file, with nothing to install.
+          </p>
+        </div>
+      </div>
+
+      <div class="empty" id="storage-warning" style="display:none"></div>
+
+      <div class="shelf">
+        <div class="shelf-head">
+          <h2>Campaigns <span class="count" id="campaign-count"></span></h2>
+          <div class="shelf-actions">
+            <button class="btn" id="import-campaign">Import…</button>
+            <button class="btn btn-primary" id="new-campaign">New campaign</button>
+          </div>
+        </div>
+        <div class="cards" id="campaign-shelf"></div>
+      </div>
+
+      <div class="shelf">
+        <div class="shelf-head">
+          <h2>Character vault <span class="count" id="vault-count"></span></h2>
+          <div class="shelf-actions">
+            <button class="btn" id="import-character">Import a sheet…</button>
+          </div>
+        </div>
+        <div class="cards" id="vault-shelf"></div>
+      </div>
+
+      <input type="file" id="import-file" accept=".json,application/json" style="display:none">
+
+      <div class="attribution">
+        Rules content includes material from the System Reference Document 5.1
+        by Wizards of the Coast LLC, available under the
+        <a href="https://creativecommons.org/licenses/by/4.0/legalcode" target="_blank" rel="noopener">Creative
+        Commons Attribution 4.0 International License</a>.
+        <br>
+        Campaigns are kept in this browser's local storage. That is a
+        convenience, not an archive — <strong>export anything you would be
+        sorry to lose.</strong>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== THE TABLE ==================== -->
+  <div class="screen" id="screen-table">
+
+    <div class="topbar">
+      <button class="btn btn-sm" id="back-to-library">‹ Library</button>
+      <span class="campaign-name" id="campaign-name"></span>
+      <span class="clock" id="clock"></span>
+      <span class="spacer"></span>
+      <span class="save-state saved" id="save-state">saved</span>
+      <button class="btn btn-sm" id="save-now">Save</button>
+      <button class="btn btn-sm" id="export-now">Export</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="play">Play</button>
+      <button class="tab" data-tab="party">Party</button>
+      <button class="tab" data-tab="sheet">Sheet</button>
+      <button class="tab" data-tab="gear">Gear</button>
+      <button class="tab" data-tab="combat">Combat<span class="badge" id="combat-badge" style="display:none"></span></button>
+      <button class="tab" data-tab="world">World</button>
+      <button class="tab" data-tab="log">Log</button>
+    </div>
+
+    <div class="panels">
+
+      <!-- Play -->
+      <div class="panel active" id="panel-play">
+        <div class="story" id="story">
+          <div class="story-inner" id="story-inner"></div>
+        </div>
+        <div class="composer">
+          <div class="composer-inner">
+            <div class="quick">
+              <button class="btn" data-quick="/scene">Open the scene</button>
+              <button class="btn" data-quick="/roll">Roll</button>
+              <button class="btn" data-quick="/narrate">Narrate</button>
+              <button class="btn" data-quick="/recap">Recap</button>
+              <button class="btn" data-quick="/checkpoint">Checkpoint</button>
+              <button class="btn" data-quick="/help">Commands</button>
+            </div>
+            <div class="row">
+              <textarea id="say-input" rows="1"
+                placeholder="What does your character do? (Enter to act, Shift+Enter for a new line)"></textarea>
+              <button class="btn btn-primary" id="say-button">Act</button>
+            </div>
+            <div class="acting-as" id="acting-as"></div>
+            <div class="diagnostics" id="diagnostics"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Party -->
+      <div class="panel" id="panel-party">
+        <div class="panel-inner">
+          <h2>The party</h2>
+          <p class="panel-lede">
+            Every sheet is derived from the rules pack: hit points, armour
+            class, saving throws and starting gear are computed, never typed in.
+          </p>
+          <div class="toolbar">
+            <button class="btn btn-primary" id="add-character">Roll up a character</button>
+            <button class="btn" id="adopt-character">Bring one in from the vault</button>
+          </div>
+          <div class="cards" id="party-list"></div>
+        </div>
+      </div>
+
+      <!-- Sheet -->
+      <div class="panel" id="panel-sheet">
+        <div class="panel-inner" id="sheet-body"></div>
+      </div>
+
+      <!-- Gear -->
+      <div class="panel" id="panel-gear">
+        <div class="panel-inner" id="gear-body"></div>
+      </div>
+
+      <!-- Combat -->
+      <div class="panel" id="panel-combat">
+        <div class="panel-inner" id="combat-body"></div>
+      </div>
+
+      <!-- World -->
+      <div class="panel" id="panel-world">
+        <div class="panel-inner" id="world-body"></div>
+      </div>
+
+      <!-- Log -->
+      <div class="panel" id="panel-log">
+        <div class="panel-inner" id="log-body"></div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ==================== CHROME ==================== -->
+
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal" id="modal">
+    <div class="modal-head">
+      <h2 id="modal-title"></h2>
+      <button class="close-x" id="modal-close" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<!-- The engine, in load order.  Classic scripts on purpose: ES modules are
+     blocked by CORS when a page is opened from file://, and this page must
+     work when it is opened by double-clicking it. -->
+<script src="src/00-core.js"></script>
+<script src="src/10-rules-pack.js"></script>
+<script src="src/20-dice.js"></script>
+<script src="src/30-rules.js"></script>
+<script src="src/40-character.js"></script>
+<script src="src/50-events.js"></script>
+<script src="src/60-checks.js"></script>
+<script src="src/65-combat.js"></script>
+<script src="src/70-inventory.js"></script>
+<script src="src/75-encounters.js"></script>
+<script src="src/80-quests.js"></script>
+<script src="src/85-world.js"></script>
+<script src="src/90-session.js"></script>
+<script src="src/92-dm.js"></script>
+<script src="src/95-library.js"></script>
+<script src="src/ui/app.js"></script>
+
+</body>
+</html>
