@@ -265,6 +265,7 @@ Next: the HTTP API (`dmai/api`) — a client of the same `GameSession`.
 
 The engine and everything around it is MIT licensed. See `LICENSE`.
 
-Rules content in `rules_packs/srd51/` is the exception: it includes material
+Rules content in `rules_packs/srd51/` is the one exception: it includes material
 from the System Reference Document 5.1 by Wizards of the Coast LLC, used under
-CC-BY-4.0. See `rules_packs/srd51/LICENSE`.
+CC-BY-4.0. The generated `standalone/src/10-rules-pack.js` embeds that same data
+and inherits those terms. See `NOTICE` and `rules_packs/srd51/LICENSE`.
