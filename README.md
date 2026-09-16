@@ -59,7 +59,13 @@ dmai/
 └── integrations/    OpenClaw adapter -- headless, multi-table
 
 sdk/                 dmai-sdk -- the embeddable, zero-network engine
+standalone/          The browser build -- the same game, no Python at runtime
 ```
+
+`standalone/` is a self-contained port: `src/` holds the engine in plain JS,
+`src/ui/` the table, and `index.html` opens it straight from disk. It has no
+filesystem, so the rules ship inside the bundle -- `embed_rules.py` regenerates
+`src/10-rules-pack.js` from `rules_packs/`, and that file is never hand-edited.
 
 `rules_packs/srd51/` holds the rules as **data** (CC-BY-4.0 SRD 5.1). Swapping
 or extending a ruleset means editing JSON, not Python.
@@ -257,6 +263,8 @@ Next: the HTTP API (`dmai/api`) — a client of the same `GameSession`.
 
 ## Licence
 
-Rules content in `rules_packs/srd51/` includes material from the System
-Reference Document 5.1 by Wizards of the Coast LLC, used under CC-BY-4.0. See
-`rules_packs/srd51/LICENSE`.
+The engine and everything around it is MIT licensed. See `LICENSE`.
+
+Rules content in `rules_packs/srd51/` is the exception: it includes material
+from the System Reference Document 5.1 by Wizards of the Coast LLC, used under
+CC-BY-4.0. See `rules_packs/srd51/LICENSE`.
